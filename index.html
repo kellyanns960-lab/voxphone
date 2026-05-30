@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#6C63FF" />
+  <title>VoxCall – Communication Non-Verbale</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then(reg => console.log('VoxCall SW enregistré :', reg.scope))
+          .catch(err => console.warn('SW non enregistré :', err));
+      });
+    }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #6C63FF;
+      --primary-dark: #4f48c4;
+      --secondary: #FF6584;
+      --success: #43D39E;
+      --warning: #FFB347;
+      --bg: #F0F2FF;
+      --card: #ffffff;
+      --text: #2D2D2D;
+      --muted: #888;
+      --radius: 16px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      background: linear-gradient(135deg, var(--primary), #8f7ff7);
+      color: white;
+      padding: 14px 20px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(108,99,255,0.3);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.5px; }
+    header p { font-size: 0.75rem; opacity: 0.85; }
+    .call-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+    }
+    .call-dot {
+      width: 8px; height: 8px;
+      background: #43D39E;
+      border-radius: 50%;
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    /* TABS */
+    .tabs {
+      display: flex;
+      background: white;
+      border-bottom: 2px solid var(--bg);
+      position: sticky;
+      top: 64px;
+      z-index: 99;
+    }
+    .tab {
+      flex: 1;
+      padding: 12px 8px;
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .tab-icon { font-size: 1.2rem; display: block; margin-bottom: 2px; }
+
+    /* CONTENT */
+    .content { flex: 1; padding: 16px; overflow-y: auto; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* TEXT PANEL */
+    .text-area-wrapper {
+      background: white;
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      margin-bottom: 16px;
+    }
+    textarea {
+      width: 100%;
+      border: 2px solid #e8e8f0;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 1.1rem;
+      resize: none;
+      min-height: 120px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.2s;
+      line-height: 1.5;
+    }
+    textarea:focus { border-color: var(--primary); }
+    .text-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      border-radius: 12px;
+      padding: 13px 18px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary { background: var(--primary); color: white; flex: 1; font-size: 1.05rem; }
+    .btn-secondary { background: var(--bg); color: var(--primary); }
+    .btn-danger { background: #ffe5ec; color: var(--secondary); }
+    .btn-large {
+      width: 100%;
+      padding: 16px;
+      font-size: 1.1rem;
+      border-radius: 14px;
+      margin-top: 8px;
+    }
+
+    /* SPEED DIAL */
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin: 20px 0 10px;
+    }
+    .quick-phrases {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .phrase-btn {
+      background: white;
+      border: 2px solid transparent;
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      text-align: left;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .phrase-btn:active { transform: scale(0.97); box-shadow: none; border-color: var(--primary); }
+    .phrase-btn .emoji { font-size: 1.5rem; width: 36px; text-align: center; flex-shrink: 0; }
+    .phrase-btn .phrase-text { font-size: 0.95rem; font-weight: 500; }
+    .phrase-btn .phrase-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+    /* PICTOGRAMS PANEL */
+    .picto-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .picto-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 16px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.07);
+      transition: all 0.15s;
+      border: 2px solid transparent;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .picto-card:active { transform: scale(0.93); border-color: var(--primary); }
+    .picto-card .picto-emoji { font-size: 2.2rem; }
+    .picto-card .picto-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-align: center;
+      color: var(--text);
+    }
+    .picto-category-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin: 18px 0 10px;
+    }
+
+    /* AI PANEL */
+    .ai-banner {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: var(--radius);
+      padding: 18px;
+      color: white;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .ai-banner .ai-icon { font-size: 2.4rem; }
+    .ai-banner h3 { font-size: 1rem; font-weight: 700; }
+    .ai-banner p { font-size: 0.8rem; opacity: 0.85; margin-top: 3px; }
+    .context-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .chip {
+      background: white;
+      border: 2px solid #e0e0f0;
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      color: var(--text);
+    }
+    .chip.selected, .chip:active { background: var(--primary); color: white; border-color: var(--primary); }
+    .ai-suggestions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ai-suggestion {
+      background: white;
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      cursor: pointer;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ai-suggestion:active { transform: scale(0.97); }
+    .ai-suggestion .suggestion-text { font-size: 0.9rem; font-weight: 500; flex: 1; }
+    .ai-suggestion .speak-icon {
+      width: 36px; height: 36px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    /* SETTINGS */
+    .settings-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+    }
+    .settings-card h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f8;
+    }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-label { font-size: 0.9rem; }
+    .setting-sub { font-size: 0.75rem; color: var(--muted); }
+    input[type="range"] { width: 120px; accent-color: var(--primary); }
+    select {
+      border: 2px solid #e8e8f0;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.85rem;
+      outline: none;
+      accent-color: var(--primary);
+    }
+    .toggle {
+      width: 46px; height: 26px;
+      background: #ddd;
+      border-radius: 13px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle.on { background: var(--primary); }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 20px; height: 20px;
+      background: white;
+      border-radius: 50%;
+      top: 3px; left: 3px;
+      transition: left 0.2s;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    .toggle.on::after { left: 23px; }
+
+    /* SPEAKING FEEDBACK */
+    .speaking-toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--primary);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 20px rgba(108,99,255,0.4);
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 200;
+      pointer-events: none;
+    }
+    .speaking-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .wave { display: flex; gap: 3px; align-items: center; }
+    .wave span {
+      width: 4px; background: white; border-radius: 2px;
+      animation: wave-anim 0.8s infinite;
+    }
+    .wave span:nth-child(1) { height: 8px; animation-delay: 0s; }
+    .wave span:nth-child(2) { height: 14px; animation-delay: 0.15s; }
+    .wave span:nth-child(3) { height: 10px; animation-delay: 0.3s; }
+    .wave span:nth-child(4) { height: 16px; animation-delay: 0.1s; }
+    .wave span:nth-child(5) { height: 8px; animation-delay: 0.25s; }
+    @keyframes wave-anim {
+      0%, 100% { transform: scaleY(1); }
+      50% { transform: scaleY(0.4); }
+    }
+
+    /* SOS BUTTON */
+    .sos-fixed {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 56px; height: 56px;
+      background: var(--secondary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      box-shadow: 0 4px 16px rgba(255,101,132,0.5);
+      cursor: pointer;
+      z-index: 150;
+      border: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sos-fixed:active { transform: scale(0.92); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>📞 VoxCall</h1>
+    <p>Communication non-verbale</p>
+  </div>
+  <div class="call-indicator">
+    <div class="call-dot"></div>
+    En appel
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('text')">
+    <span class="tab-icon">✏️</span>Texte
+  </div>
+  <div class="tab" onclick="switchTab('picto')">
+    <span class="tab-icon">🖼️</span>Pictos
+  </div>
+  <div class="tab" onclick="switchTab('ai')">
+    <span class="tab-icon">🤖</span>IA
+  </div>
+  <div class="tab" onclick="switchTab('settings')">
+    <span class="tab-icon">⚙️</span>Réglages
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- TEXT PANEL -->
+  <div class="panel active" id="panel-text">
+    <div class="text-area-wrapper">
+      <textarea id="mainText" placeholder="Tapez votre message ici... il sera lu à voix haute 🔊" rows="4"></textarea>
+      <div class="text-actions">
+        <button class="btn btn-danger" onclick="clearText()">🗑️</button>
+        <button class="btn btn-primary" onclick="speakText()">🔊 Parler</button>
+      </div>
+    </div>
+
+    <div class="section-title">⚡ Réponses rapides</div>
+    <div class="quick-phrases">
+      <div class="phrase-btn" onclick="speakPhrase('Oui, c\'est correct.')">
+        <span class="emoji">✅</span>
+        <div><div class="phrase-text">Oui, c'est correct.</div></div>
+      </div>
+      <div class="phrase-btn" onclick="speakPhrase('Non, ce n\'est pas ça.')">
+        <span class="emoji">❌</span>
+        <div><div class="phrase-text">Non, ce n'est pas ça.</div></div>
+      </div>
+      <div class="phrase-btn" onclick="speakPhrase('Pouvez-vous répéter s\'il vous plaît ?')">
+        <span class="emoji">🔄</span>
+        <div><div class="phrase-text">Pouvez-vous répéter ?</div></div>
+      </div>
+      <div class="phrase-btn" onclick="speakPhrase('Un moment s\'il vous plaît, je lis votre message.')">
+        <span class="emoji">⏳</span>
+        <div><div class="phrase-text">Un moment, je lis votre message.</div></div>
+      </div>
+      <div class="phrase-btn" onclick="speakPhrase('Je suis d\'accord.')">
+        <span class="emoji">👍</span>
+        <div><div class="phrase-text">Je suis d'accord.</div></div>
+      </div>
+      <div class="phrase-btn" onclick="speakPhrase('Je ne comprends pas. Pouvez-vous expliquer différemment ?')">
+        <span class="emoji">🤔</span>
+        <div><div class="phrase-text">Je ne comprends pas.</div></div>
+      </div>
+      <div class="phrase-btn" onclick="speakPhrase('Merci beaucoup.')">
+        <span class="emoji">🙏</span>
+        <div><div class="phrase-text">Merci beaucoup.</div></div>
+      </div>
+      <div class="phrase-btn" onclick="speakPhrase('Au revoir, bonne journée.')">
+        <span class="emoji">👋</span>
+        <div><div class="phrase-text">Au revoir, bonne journée.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PICTOGRAMS PANEL -->
+  <div class="panel" id="panel-picto">
+    <div class="picto-category-title">😊 Émotions & État</div>
+    <div class="picto-grid">
+      <div class="picto-card" onclick="speakPhrase('Je vais bien merci.')">
+        <span class="picto-emoji">😊</span>
+        <span class="picto-label">Je vais bien</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je suis fatigué.')">
+        <span class="picto-emoji">😴</span>
+        <span class="picto-label">Fatigué(e)</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('J\'ai besoin d\'aide.')">
+        <span class="picto-emoji">🆘</span>
+        <span class="picto-label">Besoin d'aide</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je suis occupé maintenant.')">
+        <span class="picto-emoji">⏰</span>
+        <span class="picto-label">Occupé(e)</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je suis à la maison.')">
+        <span class="picto-emoji">🏠</span>
+        <span class="picto-label">À la maison</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je suis en déplacement.')">
+        <span class="picto-emoji">🚗</span>
+        <span class="picto-label">En déplacement</span>
+      </div>
+    </div>
+
+    <div class="picto-category-title">💬 Conversation</div>
+    <div class="picto-grid">
+      <div class="picto-card" onclick="speakPhrase('Oui.')">
+        <span class="picto-emoji">✅</span>
+        <span class="picto-label">Oui</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Non.')">
+        <span class="picto-emoji">❌</span>
+        <span class="picto-label">Non</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Peut-être.')">
+        <span class="picto-emoji">🤷</span>
+        <span class="picto-label">Peut-être</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je ne sais pas.')">
+        <span class="picto-emoji">❓</span>
+        <span class="picto-label">Je ne sais pas</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Pouvez-vous parler plus lentement ?')">
+        <span class="picto-emoji">🐢</span>
+        <span class="picto-label">Plus lentement</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je rappellerai plus tard.')">
+        <span class="picto-emoji">📲</span>
+        <span class="picto-label">Je rappelle</span>
+      </div>
+    </div>
+
+    <div class="picto-category-title">📅 Rendez-vous</div>
+    <div class="picto-grid">
+      <div class="picto-card" onclick="speakPhrase('Je confirme le rendez-vous.')">
+        <span class="picto-emoji">📅</span>
+        <span class="picto-label">Confirmer RDV</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je dois annuler le rendez-vous.')">
+        <span class="picto-emoji">🚫</span>
+        <span class="picto-label">Annuler RDV</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Je dois reporter le rendez-vous.')">
+        <span class="picto-emoji">🔄</span>
+        <span class="picto-label">Reporter RDV</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Quelle est l\'adresse ?')">
+        <span class="picto-emoji">📍</span>
+        <span class="picto-label">Adresse ?</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('À quelle heure ?')">
+        <span class="picto-emoji">🕐</span>
+        <span class="picto-label">Heure ?</span>
+      </div>
+      <div class="picto-card" onclick="speakPhrase('Quel jour ?')">
+        <span class="picto-emoji">📆</span>
+        <span class="picto-label">Quel jour ?</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI PANEL -->
+  <div class="panel" id="panel-ai">
+    <div class="ai-banner">
+      <span class="ai-icon">🤖</span>
+      <div>
+        <h3>Suggestions intelligentes</h3>
+        <p>Choisissez un contexte pour des réponses adaptées</p>
+      </div>
+    </div>
+
+    <div class="context-chips">
+      <div class="chip selected" onclick="selectContext(this, 'general')" data-ctx="general">💬 Général</div>
+      <div class="chip" onclick="selectContext(this, 'medical')" data-ctx="medical">🏥 Médical</div>
+      <div class="chip" onclick="selectContext(this, 'admin')" data-ctx="admin">🏛️ Administratif</div>
+      <div class="chip" onclick="selectContext(this, 'pro')" data-ctx="pro">💼 Professionnel</div>
+      <div class="chip" onclick="selectContext(this, 'family')" data-ctx="family">👨‍👩‍👧 Famille</div>
+      <div class="chip" onclick="selectContext(this, 'urgency')" data-ctx="urgency">🚨 Urgence</div>
+    </div>
+
+    <div class="ai-suggestions" id="aiSuggestions"></div>
+  </div>
+
+  <!-- SETTINGS PANEL -->
+  <div class="panel" id="panel-settings">
+    <div class="settings-card">
+      <h3>🔊 Voix & Synthèse</h3>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Voix</div>
+          <div class="setting-sub">Voix utilisée pour parler</div>
+        </div>
+        <select id="voiceSelect"></select>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Vitesse</div>
+          <div class="setting-sub">Lenteur de la parole</div>
+        </div>
+        <input type="range" id="speedRange" min="0.5" max="1.5" step="0.1" value="0.9" />
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Volume</div>
+        </div>
+        <input type="range" id="volumeRange" min="0.5" max="1" step="0.1" value="1" />
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>⚙️ Comportement</h3>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Vibration au clic</div>
+          <div class="setting-sub">Retour haptique sur les boutons</div>
+        </div>
+        <div class="toggle on" id="toggleVibration" onclick="toggleSetting('toggleVibration')"></div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Auto-effacer le texte</div>
+          <div class="setting-sub">Vider la zone après avoir parlé</div>
+        </div>
+        <div class="toggle" id="toggleClear" onclick="toggleSetting('toggleClear')"></div>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>📝 Message d'accueil</h3>
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:10px;">Message joué automatiquement en début d'appel</p>
+      <textarea id="greetingText" style="font-size:0.9rem;min-height:80px;width:100%;border:2px solid #e8e8f0;border-radius:10px;padding:12px;font-family:inherit;outline:none;">Bonjour, je suis une personne non-verbale. Je communique avec une application vocale. Merci pour votre patience.</textarea>
+      <button class="btn btn-primary btn-large" onclick="speakText('greetingText')">🔊 Tester le message</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Speaking toast -->
+<div class="speaking-toast" id="speakingToast">
+  <div class="wave">
+    <span></span><span></span><span></span><span></span><span></span>
+  </div>
+  En cours de lecture...
+</div>
+
+<!-- SOS Button -->
+<button class="sos-fixed" onclick="speakPhrase('Urgence ! J\'ai besoin d\'aide immédiatement !')" title="SOS">🆘</button>
+
+<script>
+  // ——— Speech ———
+  let currentUtterance = null;
+  const settings = { speed: 0.9, volume: 1, vibration: true, autoClear: false };
+
+  function getVoice() {
+    const voices = speechSynthesis.getVoices();
+    const sel = document.getElementById('voiceSelect');
+    const selectedName = sel ? sel.value : '';
+    return voices.find(v => v.name === selectedName)
+        || voices.find(v => v.lang.startsWith('fr'))
+        || voices[0];
+  }
+
+  function speak(text) {
+    if (!text.trim()) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = getVoice();
+    u.rate = parseFloat(document.getElementById('speedRange')?.value || 0.9);
+    u.volume = parseFloat(document.getElementById('volumeRange')?.value || 1);
+    u.lang = 'fr-FR';
+    currentUtterance = u;
+
+    const toast = document.getElementById('speakingToast');
+    toast.classList.add('show');
+    u.onend = () => toast.classList.remove('show');
+    u.onerror = () => toast.classList.remove('show');
+
+    if (settings.vibration && navigator.vibrate) navigator.vibrate(50);
+    speechSynthesis.speak(u);
+  }
+
+  function speakText(fieldId) {
+    const id = typeof fieldId === 'string' && document.getElementById(fieldId) ? fieldId : 'mainText';
+    const text = document.getElementById(id).value;
+    speak(text);
+    if (id === 'mainText' && document.getElementById('toggleClear').classList.contains('on')) {
+      setTimeout(() => clearText(), 300);
+    }
+  }
+
+  function speakPhrase(phrase) {
+    if (settings.vibration && navigator.vibrate) navigator.vibrate(40);
+    speak(phrase);
+  }
+
+  function clearText() {
+    document.getElementById('mainText').value = '';
+    document.getElementById('mainText').focus();
+  }
+
+  // ——— Voice list ———
+  function populateVoices() {
+    const voices = speechSynthesis.getVoices();
+    const sel = document.getElementById('voiceSelect');
+    sel.innerHTML = '';
+    const frVoices = voices.filter(v => v.lang.startsWith('fr'));
+    const toShow = frVoices.length ? frVoices : voices.slice(0, 10);
+    toShow.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = v.name.substring(0, 20);
+      sel.appendChild(opt);
+    });
+  }
+  speechSynthesis.onvoiceschanged = populateVoices;
+  populateVoices();
+
+  // ——— Tabs ———
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    const tabs = ['text', 'picto', 'ai', 'settings'];
+    const idx = tabs.indexOf(name);
+    document.querySelectorAll('.tab')[idx].classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+  }
+
+  // ——— Settings ———
+  function toggleSetting(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle('on');
+    if (id === 'toggleVibration') settings.vibration = el.classList.contains('on');
+    if (id === 'toggleClear') settings.autoClear = el.classList.contains('on');
+  }
+
+  // ——— AI Suggestions ———
+  const aiContexts = {
+    general: [
+      { emoji: '👋', text: "Bonjour, comment puis-je vous aider ?" },
+      { emoji: '✅', text: "Oui, je suis disponible." },
+      { emoji: '⏳', text: "Donnez-moi un instant s'il vous plaît." },
+      { emoji: '🔄', text: "Pouvez-vous reformuler votre question ?" },
+      { emoji: '👍', text: "Très bien, je comprends." },
+      { emoji: '📞', text: "Je vous rappelle dans quelques minutes." },
+    ],
+    medical: [
+      { emoji: '🏥', text: "Je confirme mon rendez-vous médical." },
+      { emoji: '💊', text: "J'ai besoin de renouveler mon ordonnance." },
+      { emoji: '🤒', text: "Je ne me sens pas bien aujourd'hui." },
+      { emoji: '🩺', text: "Quand puis-je avoir un rendez-vous ?" },
+      { emoji: '📋', text: "Quels documents dois-je apporter ?" },
+      { emoji: '🚑', text: "C'est une situation urgente." },
+    ],
+    admin: [
+      { emoji: '📄', text: "J'appelle concernant mon dossier." },
+      { emoji: '📬', text: "J'ai reçu un courrier et j'ai des questions." },
+      { emoji: '🔢', text: "Mon numéro de dossier est le suivant." },
+      { emoji: '✍️', text: "Quels documents dois-je fournir ?" },
+      { emoji: '📅', text: "À quel délai puis-je m'attendre ?" },
+      { emoji: '❓', text: "Pouvez-vous m'expliquer la procédure ?" },
+    ],
+    pro: [
+      { emoji: '💼', text: "Je vous contacte au sujet de notre réunion." },
+      { emoji: '📊', text: "J'ai bien reçu votre proposition." },
+      { emoji: '✅', text: "Je valide votre demande." },
+      { emoji: '📧', text: "Pouvez-vous m'envoyer ça par email ?" },
+      { emoji: '🕐', text: "Je suis en réunion, je rappelle dans 30 minutes." },
+      { emoji: '🤝', text: "Nous sommes d'accord sur les termes." },
+    ],
+    family: [
+      { emoji: '❤️', text: "Je t'aime, tout va bien." },
+      { emoji: '🏠', text: "Je suis à la maison." },
+      { emoji: '🍽️', text: "Le dîner est prêt." },
+      { emoji: '🛒', text: "Peux-tu passer à l'épicerie ?" },
+      { emoji: '😊', text: "Bonne journée, à ce soir !" },
+      { emoji: '📍', text: "Je serai là dans 20 minutes." },
+    ],
+    urgency: [
+      { emoji: '🚨', text: "C'est une urgence, j'ai besoin d'aide immédiatement !" },
+      { emoji: '🏥', text: "Appelez le 15 s'il vous plaît, j'ai besoin d'une ambulance." },
+      { emoji: '🔥', text: "Appelez le 18, il y a un incendie." },
+      { emoji: '👮', text: "Appelez le 17, j'ai besoin de la police." },
+      { emoji: '📍', text: "Mon adresse est enregistrée dans mes contacts." },
+      { emoji: '🙏', text: "Je ne peux pas parler, envoyez des secours." },
+    ],
+  };
+
+  let currentContext = 'general';
+
+  function selectContext(el, ctx) {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    currentContext = ctx;
+    renderSuggestions();
+  }
+
+  function renderSuggestions() {
+    const container = document.getElementById('aiSuggestions');
+    container.innerHTML = '';
+    (aiContexts[currentContext] || []).forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'ai-suggestion';
+      div.innerHTML = `
+        <span style="font-size:1.4rem;flex-shrink:0">${item.emoji}</span>
+        <span class="suggestion-text">${item.text}</span>
+        <div class="speak-icon" onclick="speakPhrase('${item.text.replace(/'/g, "\\'")}')">🔊</div>
+      `;
+      div.onclick = (e) => {
+        if (!e.target.classList.contains('speak-icon')) speakPhrase(item.text);
+      };
+      container.appendChild(div);
+    });
+  }
+
+  renderSuggestions();
+
+  // ——— Keyboard shortcut: Enter to speak ———
+  document.getElementById('mainText').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      speakText();
+    }
+  });
+</script>
+</body>
+</html>
